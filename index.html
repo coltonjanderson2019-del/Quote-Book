@@ -493,6 +493,10 @@
       <input type="text" id="f-source" placeholder="e.g. Meditations, Book IV" />
     </div>
     <div class="form-field">
+      <label>Date given</label>
+      <input type="date" id="f-date-given" />
+    </div>
+    <div class="form-field">
       <label>Date added</label>
       <input type="date" id="f-date" />
     </div>
@@ -640,7 +644,8 @@ function renderQuotes() {
     const tags = (q.tags || []).map(t =>
       `<span class="quote-tag" data-tag="${esc(t)}">${esc(t)}</span>`
     ).join('');
-    const date = q.dateAdded ? `<span class="quote-date">${q.dateAdded}</span>` : '';
+    const dateGiven = q.dateGiven ? `<span class="quote-date" title="Date given">🗓 ${q.dateGiven}</span>` : '';
+    const dateAdded = q.dateAdded ? `<span class="quote-date" title="Date added" style="font-size:0.75rem;opacity:0.7">added ${q.dateAdded}</span>` : '';
     const source = q.source ? `<span class="quote-source">— ${esc(q.source)}</span>` : '';
     return `
       <div class="quote-card">
@@ -648,7 +653,8 @@ function renderQuotes() {
         <div class="quote-meta">
           <span class="quote-author">${esc(q.author || 'Unknown')}</span>
           ${source}
-          ${date}
+          ${dateGiven}
+          ${dateAdded}
         </div>
         ${tags ? `<div class="quote-tags">${tags}</div>` : ''}
         <div class="card-actions">
@@ -706,8 +712,9 @@ function openAddModal() {
   document.getElementById('modal-title').textContent = 'Add Quote';
   document.getElementById('f-text').value   = '';
   document.getElementById('f-author').value = '';
-  document.getElementById('f-source').value = '';
-  document.getElementById('f-date').value   = new Date().toISOString().slice(0,10);
+  document.getElementById('f-source').value     = '';
+  document.getElementById('f-date-given').value = '';
+  document.getElementById('f-date').value        = new Date().toISOString().slice(0,10);
   renderTagPills();
   quoteModal.style.display = 'flex';
   setTimeout(() => document.getElementById('f-text').focus(), 50);
@@ -721,8 +728,9 @@ function openEditModal(id) {
   document.getElementById('modal-title').textContent = 'Edit Quote';
   document.getElementById('f-text').value   = q.text   || '';
   document.getElementById('f-author').value = q.author || '';
-  document.getElementById('f-source').value = q.source || '';
-  document.getElementById('f-date').value   = q.dateAdded || '';
+  document.getElementById('f-source').value     = q.source    || '';
+  document.getElementById('f-date-given').value = q.dateGiven || '';
+  document.getElementById('f-date').value        = q.dateAdded || '';
   renderTagPills();
   quoteModal.style.display = 'flex';
 }
@@ -741,6 +749,7 @@ async function saveQuote() {
     text,
     author,
     source:    document.getElementById('f-source').value.trim(),
+    dateGiven: document.getElementById('f-date-given').value,
     dateAdded: document.getElementById('f-date').value,
     tags:      currentTags,
     updatedAt: Date.now()
