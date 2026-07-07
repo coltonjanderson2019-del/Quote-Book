@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quote Book</title>
+
+  <!-- Firebase v9 compat (easier single-file usage) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f0e8;
+      --surface: #fffdf7;
+      --surface2: #f0ebe0;
+      --border: #ddd6c6;
+      --accent: #7c5c3a;
+      --accent-light: #c9a97a;
+      --accent-hover: #5e4228;
+      --text: #2c2416;
+      --text-muted: #7a6a55;
+      --tag-bg: #e8dfc8;
+      --tag-text: #5a4a30;
+      --danger: #b84040;
+      --success: #3a7a4a;
+      --radius: 12px;
+      --shadow: 0 2px 12px rgba(80,50,20,0.10);
+    }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── Auth Screen ──────────────────────────────────────── */
+    #auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+      padding: 24px;
+      text-align: center;
+    }
+    #auth-screen h1 { font-size: 2.4rem; color: var(--accent); letter-spacing: -0.5px; }
+    #auth-screen p { color: var(--text-muted); font-size: 1.05rem; max-width: 340px; }
+    .btn-google {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 24px;
+      font-size: 1rem;
+      cursor: pointer;
+      color: var(--text);
+      font-family: inherit;
+      box-shadow: var(--shadow);
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .btn-google:hover { background: var(--surface2); box-shadow: 0 4px 18px rgba(80,50,20,0.15); }
+    .btn-google svg { flex-shrink: 0; }
+
+    /* ─── App Layout ───────────────────────────────────────── */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1.5px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-right: auto;
+    }
+    .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1.5px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface2); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.85; }
+    .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+
+    /* ─── Search & Filter Bar ──────────────────────────────── */
+    #filter-bar {
+      background: var(--surface);
+      border-bottom: 1.5px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 200px;
+    }
+    .search-wrap svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    #search-input {
+      width: 100%;
+      padding: 9px 12px 9px 38px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      font-family: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+    #search-input:focus { outline: none; border-color: var(--accent-light); }
+
+    select.filter-select {
+      padding: 9px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      font-family: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+    select.filter-select:focus { outline: none; border-color: var(--accent-light); }
+
+    /* ─── Tag filter chips ─────────────────────────────────── */
+    #tag-chips {
+      padding: 10px 24px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .tag-chip {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      font-size: 0.82rem;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .tag-chip:hover { background: var(--accent-light); color: #fff; }
+    .tag-chip.active { background: var(--accent); color: #fff; border-color: var(--accent-hover); }
+
+    /* ─── Quote Grid ───────────────────────────────────────── */
+    #main {
+      padding: 24px;
+      flex: 1;
+    }
+    #quote-count {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    #quotes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .quote-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: box-shadow 0.15s;
+      position: relative;
+    }
+    .quote-card:hover { box-shadow: 0 6px 24px rgba(80,50,20,0.15); }
+
+    .quote-text {
+      font-size: 1.08rem;
+      line-height: 1.65;
+      color: var(--text);
+      font-style: italic;
+    }
+    .quote-text::before { content: '\201C'; }
+    .quote-text::after  { content: '\201D'; }
+
+    .quote-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+    .quote-author { font-weight: bold; color: var(--accent); }
+    .quote-source { font-style: italic; }
+    .quote-date { font-size: 0.8rem; margin-left: auto; }
+
+    .quote-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .quote-tag {
+      padding: 3px 10px;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    .quote-tag:hover { background: var(--accent-light); color: #fff; }
+
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .quote-card:hover .card-actions { opacity: 1; }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state h2 { font-size: 1.4rem; margin-bottom: 8px; }
+
+    /* ─── Modal ────────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .modal h2 { font-size: 1.3rem; color: var(--accent); }
+
+    .form-field { display: flex; flex-direction: column; gap: 6px; }
+    .form-field label { font-size: 0.88rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-field input,
+    .form-field textarea,
+    .form-field select {
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--text);
+      resize: vertical;
+    }
+    .form-field input:focus,
+    .form-field textarea:focus,
+    .form-field select:focus { outline: none; border-color: var(--accent-light); }
+
+    /* Tag input */
+    .tag-input-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      cursor: text;
+      min-height: 44px;
+      align-items: center;
+    }
+    .tag-input-wrap:focus-within { border-color: var(--accent-light); }
+    .tag-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 0.8rem;
+    }
+    .tag-pill button {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 0;
+      font-size: 0.9rem;
+      line-height: 1;
+      opacity: 0.7;
+    }
+    .tag-pill button:hover { opacity: 1; }
+    #tag-text-input {
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+      outline: none;
+      min-width: 80px;
+      flex: 1;
+    }
+
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* ─── Confirm dialog ───────────────────────────────────── */
+    #confirm-dialog {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .confirm-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 28px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+    }
+    .confirm-box p { color: var(--text-muted); }
+
+    /* ─── Toast ────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--text);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      z-index: 400;
+      transition: transform 0.25s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ─── Loading ──────────────────────────────────────────── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      font-size: 1.1rem;
+      color: var(--text-muted);
+    }
+
+    /* ─── Responsive ───────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header { padding: 12px 16px; }
+      header h1 { font-size: 1.25rem; }
+      #filter-bar { padding: 12px 16px; }
+      #tag-chips { padding: 10px 16px; }
+      #main { padding: 16px; }
+      #quotes-grid { grid-template-columns: 1fr; }
+      .modal { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">Loading your quote book…</div>
+
+<!-- Auth Screen -->
+<div id="auth-screen" style="display:none">
+  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="56" height="56" rx="16" fill="#7c5c3a"/>
+    <text x="14" y="40" font-size="32" fill="#fffdf7">"</text>
+  </svg>
+  <h1>Quote Book</h1>
+  <p>Your personal collection of quotes, organized by author, date, and tags.</p>
+  <button class="btn-google" id="sign-in-btn">
+    <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.3 1.2 8.6 3.2l6.4-6.4C34.9 2.7 29.8 0 24 0 14.7 0 6.8 5.4 3 13.3l7.5 5.8C12.3 13 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.2-.4-4.7H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.4 5.8c4.3-4 6.8-9.9 6.8-17.3z"/><path fill="#FBBC05" d="M10.5 28.9A14.7 14.7 0 0 1 9.5 24c0-1.7.3-3.3.9-4.9L3 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.6l7.6-5.7z"/><path fill="#34A853" d="M24 48c6 0 11-2 14.6-5.4l-7.4-5.8c-2 1.4-4.6 2.2-7.2 2.2-6.3 0-11.7-4.2-13.6-9.9l-7.6 5.7C6.5 42.5 14.6 48 24 48z"/></svg>
+    Sign in with Google
+  </button>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <h1>📖 Quote Book</h1>
+    <div class="header-actions">
+      <button class="btn btn-primary" id="add-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Add Quote
+      </button>
+      <button class="btn btn-ghost btn-sm" id="sign-out-btn">Sign out</button>
+    </div>
+  </header>
+
+  <div id="filter-bar">
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input type="text" id="search-input" placeholder="Search quotes, authors…" />
+    </div>
+    <select class="filter-select" id="author-filter">
+      <option value="">All authors</option>
+    </select>
+    <select class="filter-select" id="sort-select">
+      <option value="newest">Newest first</option>
+      <option value="oldest">Oldest first</option>
+      <option value="author">Author A–Z</option>
+    </select>
+  </div>
+
+  <div id="tag-chips"></div>
+
+  <main id="main">
+    <div id="quote-count"></div>
+    <div id="quotes-grid"></div>
+  </main>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-backdrop" id="quote-modal" style="display:none">
+  <div class="modal">
+    <h2 id="modal-title">Add Quote</h2>
+
+    <div class="form-field">
+      <label>Quote *</label>
+      <textarea id="f-text" rows="4" placeholder="Enter the quote text…"></textarea>
+    </div>
+    <div class="form-field">
+      <label>Author *</label>
+      <input type="text" id="f-author" placeholder="e.g. Marcus Aurelius" />
+    </div>
+    <div class="form-field">
+      <label>Source</label>
+      <input type="text" id="f-source" placeholder="e.g. Meditations, Book IV" />
+    </div>
+    <div class="form-field">
+      <label>Date added</label>
+      <input type="date" id="f-date" />
+    </div>
+    <div class="form-field">
+      <label>Tags <span style="font-weight:normal;text-transform:none;letter-spacing:0">(press Enter or comma to add)</span></label>
+      <div class="tag-input-wrap" id="tag-input-wrap">
+        <input type="text" id="tag-text-input" placeholder="Add a tag…" />
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Save Quote</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Dialog -->
+<div id="confirm-dialog" style="display:none">
+  <div class="confirm-box">
+    <h3>Delete this quote?</h3>
+    <p>This can't be undone.</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─── IMPORTANT: Replace these values with your Firebase project config ──────
+// Get these from: Firebase Console → Project Settings → Your apps → Web app config
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyBkXGPOotISXNt1j_M3ZFhSQ29BwMe4tvA",
+  authDomain:        "quote-book-68aa0.firebaseapp.com",
+  projectId:         "quote-book-68aa0",
+  storageBucket:     "quote-book-68aa0.firebasestorage.app",
+  messagingSenderId: "26720270782",
+  appId:             "1:26720270782:web:ba62ffe9242d207af2a1ef"
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db   = firebase.firestore();
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+
+// ─── State ────────────────────────────────────────────────
+let quotes       = [];
+let editingId    = null;
+let currentTags  = [];
+let activeTag    = null;
+let pendingDeleteId = null;
+
+// ─── DOM refs ─────────────────────────────────────────────
+const loading       = document.getElementById('loading');
+const authScreen    = document.getElementById('auth-screen');
+const appEl         = document.getElementById('app');
+const quotesGrid    = document.getElementById('quotes-grid');
+const quoteCount    = document.getElementById('quote-count');
+const searchInput   = document.getElementById('search-input');
+const authorFilter  = document.getElementById('author-filter');
+const sortSelect    = document.getElementById('sort-select');
+const tagChips      = document.getElementById('tag-chips');
+const quoteModal    = document.getElementById('quote-modal');
+const confirmDialog = document.getElementById('confirm-dialog');
+const toastEl       = document.getElementById('toast');
+
+// ─── Auth ─────────────────────────────────────────────────
+auth.onAuthStateChanged(user => {
+  loading.style.display = 'none';
+  if (user) {
+    authScreen.style.display = 'none';
+    appEl.style.display = 'flex';
+    listenToQuotes(user.uid);
+  } else {
+    authScreen.style.display = 'flex';
+    appEl.style.display = 'none';
+  }
+});
+
+document.getElementById('sign-in-btn').addEventListener('click', () => {
+  auth.signInWithPopup(provider).catch(err => showToast('Sign-in failed: ' + err.message));
+});
+document.getElementById('sign-out-btn').addEventListener('click', () => {
+  auth.signOut();
+});
+
+// ─── Firestore listener ───────────────────────────────────
+let unsubscribe = null;
+function listenToQuotes(uid) {
+  if (unsubscribe) unsubscribe();
+  unsubscribe = db.collection('users').doc(uid).collection('quotes')
+    .onSnapshot(snapshot => {
+      quotes = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderAll();
+    });
+}
+
+// ─── Render ───────────────────────────────────────────────
+function renderAll() {
+  renderTagChips();
+  renderAuthorFilter();
+  renderQuotes();
+}
+
+function getFiltered() {
+  const q     = searchInput.value.toLowerCase().trim();
+  const auth2 = authorFilter.value;
+  const sort  = sortSelect.value;
+
+  let list = quotes.filter(quote => {
+    if (activeTag && !(quote.tags || []).includes(activeTag)) return false;
+    if (auth2 && quote.author !== auth2) return false;
+    if (q) {
+      const haystack = [quote.text, quote.author, quote.source, ...(quote.tags||[])].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (sort === 'newest') list.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (sort === 'oldest') list.sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
+  if (sort === 'author') list.sort((a,b) => (a.author||'').localeCompare(b.author||''));
+
+  return list;
+}
+
+function renderQuotes() {
+  const list = getFiltered();
+  quoteCount.textContent = list.length === 0 ? '' :
+    list.length === quotes.length
+      ? `${quotes.length} quote${quotes.length !== 1 ? 's' : ''}`
+      : `${list.length} of ${quotes.length} quotes`;
+
+  if (list.length === 0) {
+    quotesGrid.innerHTML = `<div class="empty-state"><h2>${quotes.length === 0 ? 'No quotes yet' : 'No matches'}</h2><p>${quotes.length === 0 ? 'Click "Add Quote" to get started.' : 'Try adjusting your filters or search.'}</p></div>`;
+    return;
+  }
+
+  quotesGrid.innerHTML = list.map(q => {
+    const tags = (q.tags || []).map(t =>
+      `<span class="quote-tag" data-tag="${esc(t)}">${esc(t)}</span>`
+    ).join('');
+    const date = q.dateAdded ? `<span class="quote-date">${q.dateAdded}</span>` : '';
+    const source = q.source ? `<span class="quote-source">— ${esc(q.source)}</span>` : '';
+    return `
+      <div class="quote-card">
+        <div class="quote-text">${esc(q.text)}</div>
+        <div class="quote-meta">
+          <span class="quote-author">${esc(q.author || 'Unknown')}</span>
+          ${source}
+          ${date}
+        </div>
+        ${tags ? `<div class="quote-tags">${tags}</div>` : ''}
+        <div class="card-actions">
+          <button class="btn btn-ghost btn-sm" data-edit="${q.id}">Edit</button>
+          <button class="btn btn-sm" style="background:#f5e8e8;color:var(--danger);border:1.5px solid #e8c8c8" data-delete="${q.id}">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderTagChips() {
+  const allTags = [...new Set(quotes.flatMap(q => q.tags || []))].sort();
+  if (allTags.length === 0) { tagChips.innerHTML = ''; return; }
+  tagChips.innerHTML = allTags.map(t =>
+    `<button class="tag-chip${activeTag === t ? ' active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`
+  ).join('');
+}
+
+function renderAuthorFilter() {
+  const authors = [...new Set(quotes.map(q => q.author).filter(Boolean))].sort();
+  const current = authorFilter.value;
+  authorFilter.innerHTML = '<option value="">All authors</option>' +
+    authors.map(a => `<option value="${esc(a)}"${a === current ? ' selected' : ''}>${esc(a)}</option>`).join('');
+}
+
+// ─── Event delegation ─────────────────────────────────────
+document.body.addEventListener('click', e => {
+  const editBtn   = e.target.closest('[data-edit]');
+  const deleteBtn = e.target.closest('[data-delete]');
+  const tagBtn    = e.target.closest('[data-tag]');
+
+  if (editBtn)   openEditModal(editBtn.dataset.edit);
+  if (deleteBtn) openConfirm(deleteBtn.dataset.delete);
+  if (tagBtn) {
+    const tag = tagBtn.dataset.tag;
+    activeTag = activeTag === tag ? null : tag;
+    renderAll();
+  }
+});
+
+searchInput.addEventListener('input', renderQuotes);
+authorFilter.addEventListener('change', renderQuotes);
+sortSelect.addEventListener('change', renderQuotes);
+
+// ─── Modal ────────────────────────────────────────────────
+document.getElementById('add-btn').addEventListener('click', openAddModal);
+document.getElementById('modal-cancel').addEventListener('click', closeModal);
+document.getElementById('modal-save').addEventListener('click', saveQuote);
+
+quoteModal.addEventListener('click', e => { if (e.target === quoteModal) closeModal(); });
+
+function openAddModal() {
+  editingId = null;
+  currentTags = [];
+  document.getElementById('modal-title').textContent = 'Add Quote';
+  document.getElementById('f-text').value   = '';
+  document.getElementById('f-author').value = '';
+  document.getElementById('f-source').value = '';
+  document.getElementById('f-date').value   = new Date().toISOString().slice(0,10);
+  renderTagPills();
+  quoteModal.style.display = 'flex';
+  setTimeout(() => document.getElementById('f-text').focus(), 50);
+}
+
+function openEditModal(id) {
+  const q = quotes.find(x => x.id === id);
+  if (!q) return;
+  editingId = id;
+  currentTags = [...(q.tags || [])];
+  document.getElementById('modal-title').textContent = 'Edit Quote';
+  document.getElementById('f-text').value   = q.text   || '';
+  document.getElementById('f-author').value = q.author || '';
+  document.getElementById('f-source').value = q.source || '';
+  document.getElementById('f-date').value   = q.dateAdded || '';
+  renderTagPills();
+  quoteModal.style.display = 'flex';
+}
+
+function closeModal() {
+  quoteModal.style.display = 'none';
+  editingId = null;
+}
+
+async function saveQuote() {
+  const text   = document.getElementById('f-text').value.trim();
+  const author = document.getElementById('f-author').value.trim();
+  if (!text || !author) { showToast('Quote text and author are required.'); return; }
+
+  const data = {
+    text,
+    author,
+    source:    document.getElementById('f-source').value.trim(),
+    dateAdded: document.getElementById('f-date').value,
+    tags:      currentTags,
+    updatedAt: Date.now()
+  };
+
+  const uid = auth.currentUser.uid;
+  const col = db.collection('users').doc(uid).collection('quotes');
+
+  try {
+    if (editingId) {
+      await col.doc(editingId).update(data);
+      showToast('Quote updated!');
+    } else {
+      data.createdAt = Date.now();
+      await col.add(data);
+      showToast('Quote added!');
+    }
+    closeModal();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+// ─── Tag input ────────────────────────────────────────────
+const tagTextInput = document.getElementById('tag-text-input');
+
+tagTextInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addTag(tagTextInput.value);
+  }
+  if (e.key === 'Backspace' && tagTextInput.value === '' && currentTags.length > 0) {
+    currentTags.pop();
+    renderTagPills();
+  }
+});
+tagTextInput.addEventListener('blur', () => addTag(tagTextInput.value));
+
+document.getElementById('tag-input-wrap').addEventListener('click', () => tagTextInput.focus());
+
+function addTag(val) {
+  const tag = val.replace(/,/g,'').trim().toLowerCase();
+  if (tag && !currentTags.includes(tag)) {
+    currentTags.push(tag);
+    renderTagPills();
+  }
+  tagTextInput.value = '';
+}
+
+function removeTag(tag) {
+  currentTags = currentTags.filter(t => t !== tag);
+  renderTagPills();
+}
+
+function renderTagPills() {
+  const wrap = document.getElementById('tag-input-wrap');
+  // Remove existing pills
+  wrap.querySelectorAll('.tag-pill').forEach(p => p.remove());
+  currentTags.forEach(tag => {
+    const pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    pill.innerHTML = `${esc(tag)}<button type="button" onclick="removeTag('${tag.replace(/'/g,"\\'")}')">×</button>`;
+    wrap.insertBefore(pill, tagTextInput);
+  });
+}
+
+// ─── Confirm delete ───────────────────────────────────────
+function openConfirm(id) {
+  pendingDeleteId = id;
+  confirmDialog.style.display = 'flex';
+}
+document.getElementById('confirm-cancel').addEventListener('click', () => {
+  confirmDialog.style.display = 'none';
+  pendingDeleteId = null;
+});
+document.getElementById('confirm-ok').addEventListener('click', async () => {
+  if (!pendingDeleteId) return;
+  const uid = auth.currentUser.uid;
+  try {
+    await db.collection('users').doc(uid).collection('quotes').doc(pendingDeleteId).delete();
+    showToast('Quote deleted.');
+  } catch(err) {
+    showToast('Error: ' + err.message);
+  }
+  confirmDialog.style.display = 'none';
+  pendingDeleteId = null;
+});
+
+// ─── Toast ────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+}
+
+// ─── Utility ──────────────────────────────────────────────
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
